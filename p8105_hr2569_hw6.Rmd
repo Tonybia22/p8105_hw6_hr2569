@@ -114,6 +114,17 @@ The distribution of $log(\hat{\beta}_1*\hat{\beta}_2)$ is left skewed. The produ
 Construct CI for targeted value
 
 ```{r}
+CI.rsquare <- c(
+  CI.lower = weather_target |> pull(r.squared) |> quantile(.025),
+  CI.upper = weather_target |> pull(r.squared) |> quantile(.975)
+)
 
+CI.log_beta <- c(
+  CI.lower = weather_target |> pull(log_beta1_beta2) |> quantile(.025,na.rm = TRUE),
+  CI.upper = weather_target |> pull(log_beta1_beta2) |> quantile(.975,na.rm = TRUE)
+)
 ```
 
+The CI for $\hat{r}_*^2$ is `r CI.rsquare`, the relative large value of $\hat{r}_*^2$ indicating a good model fit.
+
+The CI for $log(\hat{\beta}_1*\hat{\beta}_2)$ after filtering out NA is `r CI.log_beta`. The value is far below 0, indicating a small scale of the product. This may arise from the difference in unit scale or the low correlation of one predictor.
