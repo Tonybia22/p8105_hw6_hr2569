@@ -29,8 +29,91 @@ scale_fill_discrete = scale_fill_viridis_d
 
 # Problem 1
 
-```{r}
+Read in the data
 
+```{r}
+weather_df = 
+  rnoaa::meteo_pull_monitors(
+    c("USW00094728"),
+    var = c("PRCP", "TMIN", "TMAX"), 
+    date_min = "2022-01-01",
+    date_max = "2022-12-31") |>
+  mutate(
+    name = recode(id, USW00094728 = "CentralPark_NY"),
+    tmin = tmin / 10,
+    tmax = tmax / 10) |>
+  select(name, id, everything())
+```
+
+Use bootstrap to get the distribution for targeted value
+
+```{r}
+## extract concerning variables
+weather_reg <- weather_df|>
+  select(tmax,tmin,prcp)
+
+## use bootstrap to generate sample
+weather_bs <- weather_reg|>
+  modelr::bootstrap(5000)|>
+  mutate(
+    models = map(strap, \(df) lm(tmax ~ tmin + prcp,data = df)),
+    Rsquare = map(models, broom::glance),
+    beta = map(models, broom::tidy)
+  )|>
+  ## unnest result of broom::glance to get r square  
+  select(Rsquare,beta)|>
+  unnest(Rsquare)|>
+  ## unnest result of broom::tidy to get beta1 and beta 2
+  select(r.squared,beta)|>
+  unnest(beta)|>
+  ## get beta of tmin and beta of prcp for each bootstrap sample 
+  select(r.squared,term,estimate)
+
+weather_target <- weather_bs|>
+  pivot_wider(
+    names_from = term,
+    values_from = estimate
+  )|>
+  ## calculate the targeted result
+  mutate(
+    log_beta1_beta2 = log(tmin*prcp)
+  )|>
+  ## get the distribution of targeted value
+  select(r.squared,log_beta1_beta2)
+```
+
+Plot the bootsrap distribution for both $\hat{r}_*^2$ and $log(\hat{\beta}_1*\hat{\beta}_2)$
+
+```{r}
+weather_target |>
+  select(r.squared)|>
+  ggplot(aes(x = r.squared))+
+  geom_density()+
+  labs(
+    title = "Density of 5000 bootstrap R^2"
+  )
+
+
+```
+
+The distribution of $\hat{r}_*^2$ is close to normal distribution with little left skewness. The mean of r.square is `r weather_target |> pull(r.squared) |> mean()`, indicating a relatively well performed fit.
+
+```{r}
+weather_target |>
+  select(log_beta1_beta2)|>
+  ggplot(aes(x = log_beta1_beta2))+
+  geom_density()+
+  labs(
+    title = "Density of 5000 bootstrap log(beta1*beta2)"
+  )
+```
+
+The distribution of $log(\hat{\beta}_1*\hat{\beta}_2)$ is left skewed. The product of the coefficients of tmin and prcp is far below 1. We might consider the unit scale and the significance of the variable. The mean without NA is `r weather_target |> pull(log_beta1_beta2) |> mean(na.rm = TRUE)`. 
+
+
+Construct CI for targeted value
+
+```{r}
 
 ```
 
