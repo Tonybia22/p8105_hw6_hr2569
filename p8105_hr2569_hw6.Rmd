@@ -135,6 +135,84 @@ The CI for $log(\hat{\beta}_1*\hat{\beta}_2)$ after filtering out NA is `r CI.lo
 # Problem 3
 
 ```{r}
+nb_weight <- read_csv("./data/birthweight.csv")
+```
 
+Identify non-completed observations.
+
+```{r}
+complete <- nb_weight |> complete.cases()
+nb_weight[!complete,]
+```
+
+It turns out that all cases are completed.
+
+```{r}
+nb_weight |> pull(pnumlbw)|>range()
+nb_weight |> pull(pnumsga)|>range()
+```
+
+However,`pnumlbw` and `pnumsga` variables only have 0 value, which contributes nothing to our dependent variables. Therefore, I might take these two variables out. Also,we turn categorical values into factors
+
+```{r}
+weight_tidy <- nb_weight |>
+  select(-pnumlbw,-pnumsga)|>
+  mutate(
+    babysex = factor(babysex, labels = c("male","female")),
+    frace = case_match(frace,
+      c(1) ~ "White",
+      c(2) ~ "Black",
+      c(3) ~ "Asian",
+      c(4) ~ "Puerto Rican",
+      c(8) ~ "Other",
+      c(9) ~ "Unknown"
+    ),
+    mrace = case_when(
+      mrace == 1 ~ "White",
+      mrace == 2 ~ "Black",
+      mrace == 3 ~ "Asian",
+      mrace == 4 ~ "Puerto Rican",
+      mrace == 8 ~ "Other"
+    ),
+    malform = case_match(malform,
+      c(0) ~ "absent",
+      c(1) ~ "present"
+    )
+  )
+```
+
+When further looking into data, I noticed something interesting.
+
+```{r data_test}
+weight_tidy |> pull(frace) |> unique()
+weight_tidy |> pull(mrace) |> unique()
+
+## Test if the wtgain variable is the difference between delwt and ppwt
+weight_test <- weight_tidy|>
+  mutate(
+    weight_change = delwt - ppwt,
+    delta = weight_change - wtgain
+  )|>
+  select(delta)|>
+  range()
+
+## The range of the delta equals 0,indicating wtgain variable is the difference between delwt and ppwt
+weight_test
+```
+
+* First, the races of fathers only contains `r weight_tidy |> pull(frace) |> unique()`, in total `r weight_tidy |> pull(frace) |> unique() |> length()`races.
+* Second, the races of mothers only contains `r weight_tidy |> pull(mrace) |> unique()`, in total `r weight_tidy |> pull(mrace) |> unique() |> length()`races.
+* Third, the variable `wtgain` is the difference between `delwt` and `ppwt`. This direct linear relationship can allow me to delete `wtgain` variables for linear regression purpose.
+
+
+
+```{r}
+
+```
+
+
+```{r}
+model.0 <- lm(bwt ~ ., data = weight_reg)
+summary(model.0)
 ```
 
