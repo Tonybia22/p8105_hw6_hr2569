@@ -6,7 +6,8 @@ output: html_document
 ---
 ```{r setup,include=FALSE}
 library(tidyverse)
-library(p8105.datasets)
+library(modelr)
+
 
 knitr::opts_chunk$set(
 	echo = TRUE,
@@ -45,7 +46,7 @@ weather_df =
   select(name, id, everything())
 ```
 
-####Bootstrap
+#### Bootstrap
 Use bootstrap to get the distribution for targeted value
 
 ```{r}
@@ -110,7 +111,7 @@ weather_target |>
   )
 ```
 
-The distribution of $log(\hat{\beta}_1*\hat{\beta}_2)$ is left skewed. The product of the coefficients of tmin and prcp is far below 1. We might consider the unit scale and the significance of the variable. The mean without NA is `r weather_target |> pull(log_beta1_beta2) |> mean(na.rm = TRUE)`. 
+The distribution of $log(\hat{\beta}_1*\hat{\beta}_2)$ is left skewed. The product of the coefficients of tmin and prcp is far below 1. We might consider if there is problems with the unit scale and the significance of the variable. The mean without NA is `r weather_target |> pull(log_beta1_beta2) |> mean(na.rm = TRUE)`. 
 
 
 #### Construct CI for targeted value
@@ -134,6 +135,8 @@ The CI for $log(\hat{\beta}_1*\hat{\beta}_2)$ after filtering out NA is `r CI.lo
 
 # Problem 3
 
+#### Data explore and tidy
+
 ```{r}
 nb_weight <- read_csv("./data/birthweight.csv")
 ```
@@ -152,7 +155,7 @@ nb_weight |> pull(pnumlbw)|>range()
 nb_weight |> pull(pnumsga)|>range()
 ```
 
-However,`pnumlbw` and `pnumsga` variables only have 0 value, which contributes nothing to our dependent variables. Therefore, I might take these two variables out. Also,we turn categorical values into factors
+However,`pnumlbw` and `pnumsga` variables only have 0 value, which contributes nothing to our dependent variables. Therefore, I might take these two variables out. Also,we turn categorical variables into factors
 
 ```{r}
 weight_tidy <- nb_weight |>
@@ -204,6 +207,8 @@ weight_test
 * Second, the races of mothers only contains `r weight_tidy |> pull(mrace) |> unique()`, in total `r weight_tidy |> pull(mrace) |> unique() |> length()`races.
 * Third, the variable `wtgain` is the difference between `delwt` and `ppwt`. This direct linear relationship can allow me to delete `wtgain` variables for linear regression purpose.
 
+#### Fit my own model
+
 Now generate the data for regression
 
 ```{r}
@@ -224,13 +229,13 @@ model.AIC <- step(model.0)
 summary(model.AIC)
 ```
 
-Most fitted variables are significant, `r mraceBlack` and `r mracePuerto Rican` are not significant.
+Most fitted variables are significant, `mraceBlack` and `mracePuerto Rican` are not significant.
 
 Then make plot of residuals and fitted values
 ```{r}
 weight_predict <- weight_reg |>
-  modelr::add_residuals(model.AIC)|>
-  modelr::add_predictions(model.AIC)
+  add_residuals(model.AIC)|>
+  add_predictions(model.AIC)
 
 weight_predict |>
   ggplot(aes(x = pred, y = resid))+
@@ -243,21 +248,62 @@ weight_predict |>
     y = "Residuals")
 ```
 
-We can see that this model have a bad prediction when fitted values are relatively small. This may be due to the insignificant races
-variables of the models.
-The residuals has no significant patterns when the fitted values are around between 2000 to 4000. But overall the residuals are too big.
+We can see that the residuals and fitted values have correlation when fitted values are relatively small. 
+The residuals has no significant patterns when the fitted values are around between 2000 to 4000. But overall the residuals are too big.This may be due to the insignificant races variables of the models.
 
+#### Use cross validation to compare other two models
 
 Then fit other two models
 
 ```{r}
 model.1 <- lm(bwt ~ blength + gaweeks, data = weight_reg)
 model.2 <- lm(bwt ~ bhead * blength * babysex, data = weight_reg)
-```
-
-
-```{r}
 summary(model.1)
 summary(model.2)
 ```
 
+Almost all the variables in these two models are significant, except the `bhead` and `blength` interaction part.
+
+Now use cross validation to compare these three models
+
+```{r}
+cv_weight <- weight_reg|>
+  crossv_mc(n = 100)|>
+  mutate(
+    train = map(train, as.tibble),
+    test = map(test, as.tibble)
+  )
+
+## calculate rmse for each model
+
+cv_model <- cv_weight|>
+  mutate(
+    model.AIC = map(train, \(df) lm(bwt ~ babysex + bhead + blength + delwt + fincome +gaweeks + mheight +  mrace + parity + ppwt + smoken,data = df)),
+    model.1 = map(train, \(df) lm(bwt ~ blength + gaweeks, data = df)),
+    model.2 = map(train, \(df) lm(bwt ~ bhead * blength * babysex, data = df))
+    )|>
+  mutate(
+    rmse_aic = map2_dbl(model.AIC, test, \(mod,df) rmse(model = mod,data = df)),
+    rmse_1 = map2_dbl(model.1, test, \(mod,df) rmse(model = mod,data = df)),
+    rmse_2 = map2_dbl(model.2, test, \(mod,df) rmse(model = mod,data = df))
+  )
+```
+
+After getting the RMSE of each model, then plot the violin plot to view the distribution of RMSE
+
+```{r}
+cv_model |>
+  select(starts_with("rmse"))|>
+  pivot_longer(
+    everything(),
+    names_to = "model",
+    values_to = "rmse",
+    names_prefix = "rmse_"
+  )|>
+  ggplot(aes(x = model, y = rmse ))+
+  geom_violin()
+```
+
+According to cross validation. It turns out that the model chosen form AIC has the average lowest RMSE compared to the two given models. Also, the RSME distribution of the AIC model under cross validation is also more concentrated.  
+
+Therefore,based on the outcome of cross validation, one might chose the model based on AIC.
