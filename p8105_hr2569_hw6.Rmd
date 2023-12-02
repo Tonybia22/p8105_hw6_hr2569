@@ -204,15 +204,60 @@ weight_test
 * Second, the races of mothers only contains `r weight_tidy |> pull(mrace) |> unique()`, in total `r weight_tidy |> pull(mrace) |> unique() |> length()`races.
 * Third, the variable `wtgain` is the difference between `delwt` and `ppwt`. This direct linear relationship can allow me to delete `wtgain` variables for linear regression purpose.
 
-
+Now generate the data for regression
 
 ```{r}
+weight_reg <- weight_tidy|>
+  select(-wtgain)
+```
 
+Get initial linear model
+
+```{r}
+model.0 <- lm(bwt ~ ., data = weight_reg)
+```
+
+Use AIC to select variables and read results
+
+```{r}
+model.AIC <- step(model.0)
+summary(model.AIC)
+```
+
+Most fitted variables are significant, `r mraceBlack` and `r mracePuerto Rican` are not significant.
+
+Then make plot of residuals and fitted values
+```{r}
+weight_predict <- weight_reg |>
+  modelr::add_residuals(model.AIC)|>
+  modelr::add_predictions(model.AIC)
+
+weight_predict |>
+  ggplot(aes(x = pred, y = resid))+
+  geom_point()+
+  geom_smooth()+
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  labs(
+    title = "Residuals vs Fitted Values", 
+    x = "Fitted Values", 
+    y = "Residuals")
+```
+
+We can see that this model have a bad prediction when fitted values are relatively small. This may be due to the insignificant races
+variables of the models.
+The residuals has no significant patterns when the fitted values are around between 2000 to 4000. But overall the residuals are too big.
+
+
+Then fit other two models
+
+```{r}
+model.1 <- lm(bwt ~ blength + gaweeks, data = weight_reg)
+model.2 <- lm(bwt ~ bhead * blength * babysex, data = weight_reg)
 ```
 
 
 ```{r}
-model.0 <- lm(bwt ~ ., data = weight_reg)
-summary(model.0)
+summary(model.1)
+summary(model.2)
 ```
 
